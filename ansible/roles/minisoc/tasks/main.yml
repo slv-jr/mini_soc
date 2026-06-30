@@ -1,0 +1,84 @@
+---
+- name: Créer l'arborescence Mini-SOC
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ minisoc_user }}"
+    mode: "0755"
+  loop:
+    - "{{ minisoc_dir }}"
+    - "{{ minisoc_dir }}/data"
+    - "{{ minisoc_dir }}/data/geoip"
+    - "{{ minisoc_dir }}/logs"
+
+- name: Synchroniser le code source vers {{ minisoc_dir }}
+  ansible.posix.synchronize:
+    src: "{{ playbook_dir }}/../"
+    dest: "{{ minisoc_dir }}/"
+    delete: false
+    rsync_opts:
+      - "--exclude=.git"
+      - "--exclude=.venv"
+      - "--exclude=data"
+      - "--exclude=logs"
+      - "--exclude=__pycache__"
+      - "--exclude=.env"
+
+- name: Créer le virtualenv et installer les dépendances Python
+  ansible.builtin.pip:
+    requirements: "{{ minisoc_dir }}/requirements.txt"
+    virtualenv: "{{ minisoc_dir }}/venv"
+    virtualenv_command: python3 -m venv
+
+- name: Vérifier la présence du fichier .env
+  ansible.builtin.stat:
+    path: "{{ minisoc_dir }}/docker/.env"
+  register: env_stat
+
+- name: Générer des secrets aléatoires (au premier déploiement uniquement)
+  ansible.builtin.set_fact:
+    influx_password: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
+    influx_token: "{{ lookup('password', '/dev/null length=40 chars=ascii_letters,digits') }}"
+    grafana_password: "{{ lookup('password', '/dev/null length=20 chars=ascii_letters,digits') }}"
+    wazuh_api_password: "{{ lookup('password', '/dev/null length=20 chars=ascii_letters,digits') }}A1"
+    indexer_password: "{{ lookup('password', '/dev/null length=20 chars=ascii_letters,digits') }}A1"
+    dashboard_password: "{{ lookup('password', '/dev/null length=20 chars=ascii_letters,digits') }}A1"
+  when: not env_stat.stat.exists
+
+- name: Écrire le fichier .env de la stack Docker
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ minisoc_dir }}/docker/.env"
+    owner: "{{ minisoc_user }}"
+    mode: "0600"
+  when: not env_stat.stat.exists
+
+- name: Télécharger la base GeoLite2-City (si clé MaxMind fournie)
+  ansible.builtin.get_url:
+    url: "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City&license_key={{ maxmind_license_key }}&suffix=tar.gz"
+    dest: /tmp/geolite2.tar.gz
+    mode: "0644"
+  when: maxmind_license_key | length > 0
+  register: geoip_dl
+  ignore_errors: true
+
+- name: Extraire la base GeoIP
+  ansible.builtin.shell: >
+    tar -xzf /tmp/geolite2.tar.gz -C /tmp &&
+    find /tmp -name 'GeoLite2-City.mmdb' -exec cp {} {{ minisoc_dir }}/data/geoip/ \;
+  args:
+    creates: "{{ minisoc_dir }}/data/geoip/GeoLite2-City.mmdb"
+  when: maxmind_license_key | length > 0 and geoip_dl is succeeded
+
+- name: Installer le service systemd minisoc
+  ansible.builtin.copy:
+    src: "{{ minisoc_dir }}/minisoc.service"
+    dest: /etc/systemd/system/minisoc.service
+    remote_src: true
+    mode: "0644"
+
+- name: Recharger systemd et activer le service
+  ansible.builtin.systemd:
+    name: minisoc
+    daemon_reload: true
+    enabled: true

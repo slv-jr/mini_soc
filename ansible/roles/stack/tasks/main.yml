@@ -1,0 +1,47 @@
+---
+- name: Construire les arguments de profils Docker
+  ansible.builtin.set_fact:
+    profile_args: "{{ soc_profiles | map('regex_replace', '^(.*)$', '--profile \\1') | join(' ') }}"
+
+- name: Générer les certificats SSL Wazuh (une seule fois)
+  ansible.builtin.command:
+    cmd: docker compose -f generate-certs.yml run --rm generator
+    chdir: "{{ minisoc_dir }}/docker"
+    creates: "{{ minisoc_dir }}/docker/wazuh/config/certs/root-ca.pem"
+  when: "'siem' in soc_profiles"
+
+- name: Démarrer la stack Mini-SOC ({{ profile_args }})
+  ansible.builtin.command:
+    cmd: "docker compose {{ profile_args }} up -d"
+    chdir: "{{ minisoc_dir }}/docker"
+  register: compose_up
+  changed_when: "'Started' in compose_up.stderr or 'Created' in compose_up.stderr"
+
+- name: Configurer l'intégration Wazuh -> webhook Mini-SOC (dans le manager)
+  ansible.builtin.shell: |
+    docker exec minisoc-wazuh-manager sh -c '
+      printf "#!/bin/sh\nexec /var/ossec/framework/python/bin/python3 /var/ossec/integrations/custom-minisoc.py \"$@\"\n" > /var/ossec/integrations/custom-minisoc &&
+      chmod 750 /var/ossec/integrations/custom-minisoc /var/ossec/integrations/custom-minisoc.py &&
+      chown root:wazuh /var/ossec/integrations/custom-minisoc /var/ossec/integrations/custom-minisoc.py'
+    docker restart minisoc-wazuh-manager
+  when: "'siem' in soc_profiles"
+  changed_when: true
+
+- name: Attendre que le dashboard Flask réponde (si moteur démarré séparément)
+  ansible.builtin.uri:
+    url: "http://localhost:5000/api/status"
+    status_code: 200
+  register: dash_health
+  retries: 5
+  delay: 5
+  until: dash_health.status == 200
+  ignore_errors: true
+
+- name: Récapitulatif d'accès
+  ansible.builtin.debug:
+    msg:
+      - "Dashboard Mini-SOC : http://{{ ansible_default_ipv4.address | default('localhost') }}:5000"
+      - "Grafana            : http://{{ ansible_default_ipv4.address | default('localhost') }}:3000"
+      - "Wazuh dashboard    : https://{{ ansible_default_ipv4.address | default('localhost') }}:5601"
+      - "Secrets générés dans {{ minisoc_dir }}/docker/.env"
+      - "Démarrer le moteur Python : sudo systemctl start minisoc"

@@ -1,0 +1,55 @@
+---
+- name: Ajouter la clé GPG du dépôt Wazuh
+  ansible.builtin.get_url:
+    url: https://packages.wazuh.com/key/GPG-KEY-WAZUH
+    dest: /etc/apt/keyrings/wazuh.gpg.key
+    mode: "0644"
+
+- name: Importer la clé Wazuh au format keyring
+  ansible.builtin.shell: >
+    gpg --no-default-keyring --keyring /usr/share/keyrings/wazuh.gpg
+    --import /etc/apt/keyrings/wazuh.gpg.key
+  args:
+    creates: /usr/share/keyrings/wazuh.gpg
+
+- name: Ajouter le dépôt APT Wazuh
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main"
+    filename: wazuh
+    state: present
+
+- name: Installer l'agent Wazuh
+  ansible.builtin.apt:
+    name: "wazuh-agent={{ wazuh_agent_version }}"
+    state: present
+    update_cache: true
+  environment:
+    WAZUH_MANAGER: "{{ wazuh_manager_ip }}"
+
+- name: Déployer la configuration de l'agent
+  ansible.builtin.copy:
+    src: "{{ minisoc_dir }}/docker/wazuh/agent/ossec-agent.conf"
+    dest: /var/ossec/etc/ossec.conf
+    remote_src: true
+    mode: "0640"
+  notify: restart wazuh-agent
+
+- name: Renseigner l'adresse du manager dans la config de l'agent
+  ansible.builtin.replace:
+    path: /var/ossec/etc/ossec.conf
+    regexp: "MANAGER_IP"
+    replace: "{{ wazuh_manager_ip }}"
+  notify: restart wazuh-agent
+
+- name: Enregistrer l'agent auprès du manager (idempotent)
+  ansible.builtin.shell: >
+    /var/ossec/bin/agent-auth -m {{ wazuh_manager_ip }} -p 1515
+  args:
+    creates: /var/ossec/etc/client.keys
+  ignore_errors: true
+
+- name: Activer et démarrer l'agent Wazuh
+  ansible.builtin.systemd:
+    name: wazuh-agent
+    enabled: true
+    state: started

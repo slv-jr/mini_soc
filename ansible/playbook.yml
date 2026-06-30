@@ -1,0 +1,29 @@
+---
+# ============================================================
+# Mini-SOC — déploiement complet sur PC Ubuntu (idempotent).
+#
+#   cd ansible
+#   ansible-galaxy collection install community.docker ansible.posix
+#   ansible-playbook playbook.yml --ask-become-pass
+#
+# Variables ajustables dans group_vars/all.yml (profils, RAM, clés API...).
+# ============================================================
+- name: Déploiement Mini-SOC
+  hosts: minisoc
+  gather_facts: true
+
+  pre_tasks:
+    - name: Résoudre l'interface réseau à surveiller
+      ansible.builtin.set_fact:
+        soc_iface_resolved: "{{ soc_iface if soc_iface | length > 0 else ansible_default_ipv4.interface | default('eth0') }}"
+
+    - name: Afficher le contexte de déploiement
+      ansible.builtin.debug:
+        msg: "Interface={{ soc_iface_resolved }} | profils={{ soc_profiles | join(',') }} | heap={{ opensearch_heap }}"
+
+  roles:
+    - common
+    - docker
+    - minisoc
+    - { role: wazuh_agent, when: install_wazuh_agent | bool }
+    - stack

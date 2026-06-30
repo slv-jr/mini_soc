@@ -1,0 +1,16 @@
+apiVersion: 1
+
+datasources:
+  - name: InfluxDB-MiniSOC
+    uid: minisoc-influx
+    type: influxdb
+    access: proxy
+    url: http://influxdb:8086
+    jsonData:
+      version: Flux
+      organization: ${GF_INFLUXDB_ORG}
+      defaultBucket: ${GF_INFLUXDB_BUCKET}
+    secureJsonData:
+      token: ${GF_INFLUXDB_TOKEN}
+    isDefault: true
+    editable: true

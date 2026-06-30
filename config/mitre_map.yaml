@@ -1,0 +1,29 @@
+# ============================================================
+# config/mitre_map.yaml — mapping SID Suricata / nom de règle -> technique MITRE
+# Complète la table intégrée de detection/mitre.py.
+# Les SID 1000001..1000007 correspondent à docker/suricata/rules/custom.rules.
+# ============================================================
+
+# SID Suricata -> identifiant de technique
+sid_to_technique:
+  "1000001": "T1046"   # scan de ports
+  "1000002": "T1018"   # ping sweep
+  "1000003": "T1110"   # brute force SSH
+  "1000004": "T1110"   # brute force HTTP
+  "1000005": "T1190"   # SQLi
+  "1000006": "T1190"   # path traversal
+  "1000007": "T1071"   # beacon C2
+  # Quelques SID ET Open courants (exemples)
+  "2001219": "T1046"   # ET SCAN Potential SSH Scan
+  "2002910": "T1110"   # ET SCAN Rapid POP3/IMAP login -> brute
+  "2006546": "T1190"   # ET WEB_SERVER Possible SQL Injection
+
+# Nom de règle logique (legacy / Zeek notice) -> technique
+rule_to_technique:
+  port_scan: "T1046"
+  ssh_brute_force: "T1110"
+  arp_spoof: "T1557"
+  icmp_flood: "T1498"
+  dns_flood: "T1498"
+  Horizontal_Scan: "T1046"
+  Possible_Beacon: "T1071"

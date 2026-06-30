@@ -1,0 +1,19 @@
+# ============================================================
+# Mini-SOC — génération one-shot des certificats SSL Wazuh.
+# À lancer UNE FOIS avant le premier démarrage du profil siem :
+#
+#   docker compose -f generate-certs.yml run --rm generator
+#
+# Les certificats sont écrits dans ./wazuh/config/certs/ (monté).
+# Le playbook Ansible (phase 8) automatise cette étape.
+# ============================================================
+name: mini-soc-certs
+
+services:
+  generator:
+    image: wazuh/wazuh-certs-generator:0.0.2
+    hostname: wazuh-certs-generator
+    volumes:
+      - ./wazuh/config/certs/:/certificates/
+      - ./wazuh/config/certs.yml:/config/certs.yml:ro
+    entrypoint: sh -c "/entrypoint.sh && chown -R 1000:1000 /certificates && chmod 640 /certificates/*"

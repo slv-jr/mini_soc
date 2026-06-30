@@ -1,0 +1,30 @@
+# ============================================================
+# Mini-SOC — règles Suricata maison (SID >= 1000000)
+# Chaque règle porte une metadata mitre_technique_id, lue par
+# detection/mitre.py côté Python pour tagger les alertes.
+# Le gros de la détection vient d'ET Open (suricata.rules) ;
+# ces règles garantissent que les scénarios de démo se déclenchent
+# même sans connexion internet pour mettre à jour ET Open.
+# ============================================================
+
+# ── T1046 — Network Service Scanning (scan horizontal/vertical) ──────────────
+alert tcp $EXTERNAL_NET any -> $HOME_NET any (msg:"MINISOC SCAN Possible TCP port scan (SYN flood vers ports multiples)"; flags:S,12; flow:to_server; threshold:type both, track by_src, count 30, seconds 10; classtype:attempted-recon; metadata:mitre_tactic_id TA0007, mitre_technique_id T1046, mitre_technique_name Network_Service_Scanning; sid:1000001; rev:1;)
+
+# ── T1018 — Remote System Discovery (sweep ICMP) ─────────────────────────────
+alert icmp $EXTERNAL_NET any -> $HOME_NET any (msg:"MINISOC SCAN Balayage ICMP (ping sweep)"; itype:8; threshold:type both, track by_src, count 20, seconds 10; classtype:attempted-recon; metadata:mitre_tactic_id TA0007, mitre_technique_id T1018, mitre_technique_name Remote_System_Discovery; sid:1000002; rev:1;)
+
+# ── T1110 — Brute Force SSH ──────────────────────────────────────────────────
+alert tcp $EXTERNAL_NET any -> $HOME_NET 22 (msg:"MINISOC BRUTEFORCE Tentatives SSH repetees (possible brute force)"; flags:S,12; flow:to_server; threshold:type both, track by_src, count 10, seconds 60; classtype:attempted-admin; metadata:mitre_tactic_id TA0006, mitre_technique_id T1110, mitre_technique_name Brute_Force; sid:1000003; rev:1;)
+
+# ── T1110 — Brute Force HTTP (login POST repete, ex: DVWA) ────────────────────
+alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"MINISOC BRUTEFORCE POST de login HTTP repete"; flow:to_server,established; http.method; content:"POST"; http.uri; content:"login"; nocase; threshold:type both, track by_src, count 15, seconds 60; classtype:attempted-admin; metadata:mitre_tactic_id TA0006, mitre_technique_id T1110, mitre_technique_name Brute_Force; sid:1000004; rev:1;)
+
+# ── T1190 — Exploit Public-Facing Application (SQLi) ─────────────────────────
+alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"MINISOC WEBATTACK Injection SQL probable dans URI"; flow:to_server,established; http.uri; pcre:"/(\bunion\b.+\bselect\b|\bor\b\s+1=1|information_schema|sleep\(|benchmark\()/i"; classtype:web-application-attack; metadata:mitre_tactic_id TA0001, mitre_technique_id T1190, mitre_technique_name Exploit_Public_Facing_Application; sid:1000005; rev:1;)
+
+# ── T1190 — Path traversal / LFI ─────────────────────────────────────────────
+alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"MINISOC WEBATTACK Path traversal probable"; flow:to_server,established; http.uri; content:"../"; pcre:"/(\.\.[\/\\]){2,}/"; classtype:web-application-attack; metadata:mitre_tactic_id TA0001, mitre_technique_id T1190, mitre_technique_name Exploit_Public_Facing_Application; sid:1000006; rev:1;)
+
+# ── T1071 — Application Layer Protocol (beacon HTTP régulier vers C2) ─────────
+# Heuristique simple : User-Agent vide vers l'extérieur (souvent du tooling).
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"MINISOC C2 Requete HTTP sortante sans User-Agent (possible beacon)"; flow:to_server,established; http.header_names; content:!"User-Agent"; nocase; threshold:type both, track by_src, count 10, seconds 120; classtype:trojan-activity; metadata:mitre_tactic_id TA0011, mitre_technique_id T1071, mitre_technique_name Application_Layer_Protocol; sid:1000007; rev:1;)

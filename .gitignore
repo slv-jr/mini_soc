@@ -1,0 +1,55 @@
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.python-version
+
+# ── Tests & lint ──────────────────────────────────────────────────────────────
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# ── Données runtime (ne jamais committer) ──────────────────────────────────────
+data/
+logs/
+*.db
+*.db-journal
+*.log
+
+# ── Secrets & config locale ─────────────────────────────────────────────────────
+.env
+docker/.env
+*.local.yaml
+config/settings.local.yaml
+ansible/vault_pass.txt
+
+# ── Threat intel / GeoIP (téléchargés à l'install) ──────────────────────────────
+data/geoip/*.mmdb
+docker/suricata/rules/*.rules
+!docker/suricata/rules/custom.rules
+
+# ── Certificats SSL Wazuh (générés à l'install) ────────────────────────────────
+docker/wazuh/config/certs/*.pem
+docker/wazuh/config/certs/*.key
+!docker/wazuh/config/certs/.gitkeep
+
+# ── Logs des capteurs (volumes Docker montés) ───────────────────────────────────
+docker/suricata/logs/
+docker/zeek/logs/
+
+# ── IDE / OS ────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

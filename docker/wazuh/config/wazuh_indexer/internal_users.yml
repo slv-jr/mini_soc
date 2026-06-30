@@ -1,0 +1,20 @@
+---
+# Mini-SOC — utilisateurs internes de l'indexer Wazuh (OpenSearch Security).
+# ATTENTION : les `hash` ci-dessous sont les hashes bcrypt PAR DÉFAUT de Wazuh.
+# Le playbook Ansible (phase 8) les régénère à partir des mots de passe du .env
+# via l'outil hash.sh de l'image wazuh-indexer. NE PAS laisser en production.
+_meta:
+  type: "internalusers"
+  config_version: 2
+
+admin:
+  hash: "$2y$12$K/SpwjtB.wOHJ/Nc6GVRDuc1h0rM1DfvziFRNPtk27P.c4yDr9njO"
+  reserved: true
+  backend_roles:
+    - "admin"
+  description: "Admin user — Mini-SOC"
+
+kibanaserver:
+  hash: "$2y$12$4AcgAt3xwOWadA5s5blL6ev39OXDNhmOesEoo33eZtrq2N0YrU3H."
+  reserved: true
+  description: "Wazuh dashboard server user"

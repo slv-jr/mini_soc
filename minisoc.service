@@ -1,0 +1,24 @@
+[Unit]
+Description=Mini-SOC — Network Security Monitoring & Correlation Engine
+Documentation=https://github.com/ton-user/mini-soc
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/mini-soc
+# Démarre la stack conteneurisée (capteurs + SIEM + ingestion) avant le moteur Python
+ExecStartPre=/usr/bin/docker compose -f /opt/mini-soc/docker/docker-compose.yml up -d
+ExecStart=/opt/mini-soc/venv/bin/python /opt/mini-soc/main.py
+ExecStop=/usr/bin/docker compose -f /opt/mini-soc/docker/docker-compose.yml stop
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mini-soc
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

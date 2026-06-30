@@ -1,0 +1,145 @@
+%YAML 1.1
+---
+# ============================================================
+# Mini-SOC — configuration Suricata 7.x
+# Objectif : sortie eve.json riche (avec métadonnées MITRE ATT&CK)
+# consommée par Vector, qui la normalise vers le schéma NetworkEvent.
+# ============================================================
+
+vars:
+  address-groups:
+    HOME_NET: "[192.168.0.0/16,10.0.0.0/8,172.16.0.0/12]"
+    EXTERNAL_NET: "!$HOME_NET"
+    HTTP_SERVERS: "$HOME_NET"
+    SMTP_SERVERS: "$HOME_NET"
+    SQL_SERVERS: "$HOME_NET"
+    DNS_SERVERS: "$HOME_NET"
+    TELNET_SERVERS: "$HOME_NET"
+    DC_SERVERS: "$HOME_NET"
+  port-groups:
+    HTTP_PORTS: "80"
+    SHELLCODE_PORTS: "!80"
+    ORACLE_PORTS: 1521
+    SSH_PORTS: 22
+    DNP3_PORTS: 20000
+    MODBUS_PORTS: 502
+    FILE_DATA_PORTS: "[$HTTP_PORTS,110,143]"
+    FTP_PORTS: 21
+    GENEVE_PORTS: 6081
+    VXLAN_PORTS: 4789
+    TEREDO_PORTS: 3544
+
+default-log-dir: /var/log/suricata/
+
+stats:
+  enabled: yes
+  interval: 30
+
+# ── Sorties ──────────────────────────────────────────────────────────────────
+outputs:
+  # Le cœur : eve.json. Lu par Vector.
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: eve.json
+      # community-id : corrélation fiable avec Zeek (même clé de flux)
+      community-id: true
+      community-id-seed: 0
+      pcap-file: false
+      types:
+        - alert:
+            # Indispensable : émet les metadata des règles (dont mitre_technique_id)
+            metadata: true
+            tagged-packets: false
+            payload: false
+            payload-printable: true
+            http-body: false
+        - http:
+            extended: yes
+        - dns:
+            version: 2
+            enabled: yes
+        - tls:
+            extended: yes
+        - files:
+            force-magic: no
+        - ssh
+        - flow
+        - smtp
+        - dhcp:
+            enabled: yes
+            extended: yes
+
+  - stats:
+      enabled: yes
+      filename: stats.log
+      totals: yes
+      threads: no
+
+logging:
+  default-log-level: notice
+  outputs:
+    - console:
+        enabled: yes
+    - file:
+        enabled: yes
+        level: info
+        filename: /var/log/suricata/suricata.log
+
+# ── Capture ──────────────────────────────────────────────────────────────────
+# L'interface réelle est passée via -i $SOC_IFACE par le compose ;
+# ce bloc af-packet sert de configuration par défaut/fallback.
+af-packet:
+  - interface: default
+    cluster-id: 99
+    cluster-type: cluster_flow
+    defrag: yes
+    use-mmap: yes
+    tpacket-v3: yes
+
+# ── App layer (détection protocolaire) ──────────────────────────────────────
+app-layer:
+  protocols:
+    tls:
+      enabled: yes
+      detection-ports:
+        dp: 443
+    http:
+      enabled: yes
+    ssh:
+      enabled: yes
+    dns:
+      tcp:
+        enabled: yes
+      udp:
+        enabled: yes
+    smtp:
+      enabled: yes
+    ftp:
+      enabled: yes
+
+# ── Règles ───────────────────────────────────────────────────────────────────
+# default-rule-path : suricata-update y écrit suricata.rules (ET Open).
+# Nos règles maison vivent dans custom.rules.
+default-rule-path: /var/lib/suricata/rules
+rule-files:
+  - suricata.rules
+  - custom.rules
+
+# Fichiers de classification/référence fournis par l'image Docker.
+classification-file: /etc/suricata/classification.config
+reference-config-file: /etc/suricata/reference.config
+
+# ── Détection / performance (profil moyen pour un PC de récup) ──────────────
+detect:
+  profile: medium
+  sgh-mpm-context: auto
+
+mpm-algo: auto
+spm-algo: auto
+
+threading:
+  set-cpu-affinity: no
+  detect-thread-ratio: 1.0
+
+host-mode: auto

@@ -1,0 +1,124 @@
+# ============================================================
+# config/settings.yaml — configuration centrale du Mini-SOC
+# Les SECRETS (clés API, mots de passe) sont lus depuis l'environnement
+# (variables du .env Docker / systemd), jamais stockés ici.
+# ============================================================
+
+network:
+  interface: "eth0"            # interface filaire du PC (ip -br link pour la trouver)
+  subnet: "192.168.1.0/24"    # sous-réseau surveillé
+  gateway: "192.168.1.1"      # passerelle (jamais bloquée)
+
+# ── Sondes actives (conservées de la v1) ────────────────────────────────────
+probe:
+  targets:
+    - host: "192.168.1.1"
+      name: "Gateway"
+      check_http: false
+    - host: "8.8.8.8"
+      name: "Google DNS"
+      check_http: false
+    - host: "1.1.1.1"
+      name: "Cloudflare DNS"
+      check_http: false
+  interval_seconds: 30
+  http_timeout: 5
+
+# ── Bus Redis ────────────────────────────────────────────────────────────────
+redis:
+  host: "localhost"
+  port: 6379
+  db: 0
+  queues:
+    raw_events: "pisoc:raw"        # alimenté par Vector (Suricata + Zeek normalisés)
+    alerts: "pisoc:alerts"
+    topology: "pisoc:topology"
+
+# ── Métriques time-series ────────────────────────────────────────────────────
+influxdb:
+  url: "http://localhost:8086"
+  token: "${INFLUXDB_TOKEN}"       # surchargé par l'env si présent (voir loader)
+  org: "minisoc"
+  bucket: "network_metrics"
+
+sqlite:
+  path: "data/events.db"
+
+# ── MITRE ATT&CK ──────────────────────────────────────────────────────────────
+mitre:
+  enabled: true
+  # Chemin du mapping SID/règle -> technique (généré/maintenu, voir detection/mitre.py)
+  mapping_file: "config/mitre_map.yaml"
+
+# ── Enrichissement threat intel ──────────────────────────────────────────────
+enrichment:
+  enabled: true
+  cache_ttl_seconds: 86400         # 24h de cache Redis par IP
+  geoip:
+    enabled: true
+    db_path: "data/geoip/GeoLite2-City.mmdb"
+  abuseipdb:
+    enabled: true                  # nécessite ABUSEIPDB_API_KEY dans l'env
+    min_confidence: 50             # score AbuseIPDB à partir duquel on tague "malicious"
+  otx:
+    enabled: false                 # nécessite OTX_API_KEY dans l'env
+
+# ── Corrélation (chaînes MITRE multi-étapes) ─────────────────────────────────
+detection:
+  correlation:
+    context_ttl_seconds: 600       # un contexte d'attaque expire après 10 min
+  # Détection statistique d'anomalie : archivée (examples/anomaly_zscore.py), OFF.
+  anomaly:
+    enabled: false
+    window_size: 100
+    z_score_threshold: 3.0
+
+# ── Wazuh (SIEM + active response) ───────────────────────────────────────────
+wazuh:
+  api_url: "https://localhost:55000"
+  api_user: "wazuh-wui"            # mot de passe via WAZUH_API_PASSWORD (env)
+  verify_ssl: false
+  dashboard_url: "https://localhost:5601"
+
+# ── Alerting multi-canal ──────────────────────────────────────────────────────
+alerting:
+  slack:
+    enabled: false                 # webhook via SLACK_WEBHOOK_URL (env)
+    min_severity: "medium"
+  telegram:
+    enabled: false                 # token/chat via TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID (env)
+    min_severity: "high"
+  webhook:
+    enabled: false
+    url: ""
+    min_severity: "high"
+  email:
+    enabled: false
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587
+    from_addr: ""
+    to_addrs: []
+    min_severity: "high"           # username/password via env SMTP_USER / SMTP_PASSWORD
+
+# ── SOAR / réponse automatique ───────────────────────────────────────────────
+responder:
+  auto_block: false                # passer à true avec précaution
+  prefer_wazuh_ar: true            # privilégier l'active-response Wazuh, fallback nftables local
+  block_duration_seconds: 3600
+  min_severity: "high"
+  whitelist_ips:
+    - "127.0.0.1"
+    - "192.168.1.1"
+
+# ── Dashboard topologie ──────────────────────────────────────────────────────
+dashboard:
+  flask_host: "0.0.0.0"
+  flask_port: 5000
+  arp_scan_interval: 60
+
+# ── Journalisation ────────────────────────────────────────────────────────────
+logging:
+  level: "INFO"
+  file: "logs/minisoc.log"
+  max_bytes: 10485760
+  backup_count: 3

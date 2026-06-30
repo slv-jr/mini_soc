@@ -1,0 +1,2 @@
+# Les certificats SSL Wazuh sont générés ici par generate-certs.yml.
+# Les .pem sont volontairement ignorés par git (voir .gitignore).

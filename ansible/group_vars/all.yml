@@ -1,0 +1,35 @@
+---
+# ── Cible de déploiement ────────────────────────────────────────────────────
+minisoc_dir: /opt/mini-soc
+minisoc_user: "{{ ansible_user_id }}"
+
+# ── Réseau surveillé ────────────────────────────────────────────────────────
+# Laisser vide pour auto-détecter l'interface par défaut (ansible_default_ipv4).
+soc_iface: ""
+soc_subnet: "192.168.1.0/24"
+
+# ── Profils Docker à activer (core toujours actif) ──────────────────────────
+# Options : sensors, siem, lab. Adapter à la RAM disponible.
+soc_profiles:
+  - sensors
+  - siem
+
+# ── Réglage mémoire OpenSearch (indexer Wazuh) ──────────────────────────────
+# 1g par défaut ; passer à 512m sur une machine 4 Go.
+opensearch_heap: "1g"
+
+# ── Threat intel ─────────────────────────────────────────────────────────────
+# Clé de licence MaxMind pour télécharger GeoLite2 (optionnel).
+maxmind_license_key: ""
+abuseipdb_api_key: ""
+otx_api_key: ""
+
+# ── Alerting (optionnel) ─────────────────────────────────────────────────────
+slack_webhook_url: ""
+telegram_bot_token: ""
+telegram_chat_id: ""
+
+# ── Wazuh ────────────────────────────────────────────────────────────────────
+install_wazuh_agent: true
+wazuh_agent_version: "4.9.0-1"
+wazuh_manager_ip: "127.0.0.1"

@@ -1,0 +1,45 @@
+---
+- name: Mise à jour du cache APT
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Installer les paquets de base
+  ansible.builtin.apt:
+    name:
+      - python3
+      - python3-pip
+      - python3-venv
+      - git
+      - curl
+      - rsync
+      - nftables
+      - arp-scan
+      - make
+      - jq
+    state: present
+
+- name: Installer les outils d'attaque pour les démos (profil lab)
+  ansible.builtin.apt:
+    name:
+      - nmap
+      - hydra
+      - sqlmap
+    state: present
+  when: "'lab' in soc_profiles"
+  ignore_errors: true
+
+- name: Régler vm.max_map_count (requis par OpenSearch / indexer Wazuh)
+  ansible.posix.sysctl:
+    name: vm.max_map_count
+    value: "262144"
+    state: present
+    reload: true
+  when: "'siem' in soc_profiles"
+
+- name: Activer et démarrer nftables (pour l'active-response)
+  ansible.builtin.systemd:
+    name: nftables
+    enabled: true
+    state: started
+  ignore_errors: true

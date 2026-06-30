@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-test:
+    name: Lint & tests Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Installer les dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest ruff
+
+      - name: Ruff (lint)
+        run: ruff check .
+
+      - name: Pytest
+        run: pytest
+
+  compose-validate:
+    name: Validation Docker Compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Préparer le .env
+        working-directory: docker
+        run: cp .env.example .env
+
+      - name: Valider le compose principal (tous profils)
+        working-directory: docker
+        run: docker compose --profile sensors --profile siem --profile lab config --quiet
+
+      - name: Valider le compose de génération de certs
+        working-directory: docker
+        run: docker compose -f generate-certs.yml config --quiet
+
+  config-validate:
+    name: Validation YAML/JSON
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Valider YAML et JSON
+        run: |
+          pip install pyyaml
+          python - <<'PY'
+          import glob, json, yaml
+          for f in glob.glob("config/*.yaml") + glob.glob("ansible/**/*.yml", recursive=True) + glob.glob("docker/**/*.yml", recursive=True):
+              yaml.safe_load(open(f, encoding="utf-8")); print("yaml ok", f)
+          for f in glob.glob("docker/grafana/provisioning/dashboards/*.json"):
+              json.load(open(f, encoding="utf-8")); print("json ok", f)
+          PY

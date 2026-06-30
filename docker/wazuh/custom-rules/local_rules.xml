@@ -1,0 +1,54 @@
+<!--
+  Mini-SOC — règles Wazuh maison (IDs >= 100000, plage réservée locale).
+  Objectif : relever le niveau de certaines alertes Suricata/SSH pour
+  déclencher l'active-response (niveau >= 10) et faciliter la corrélation.
+-->
+<group name="minisoc,">
+
+  <!-- Suricata : nos signatures custom (SID 1000001..1000007) -->
+  <rule id="100010" level="10">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature_id">^100000[1-7]$</field>
+    <description>Mini-SOC: alerte Suricata maison (MITRE) - $(alert.signature)</description>
+    <group>ids,suricata,mitre,</group>
+  </rule>
+
+  <!-- Suricata : toute alerte de catégorie attaque web -> HIGH -->
+  <rule id="100011" level="10">
+    <if_sid>86601</if_sid>
+    <field name="alert.category">Web Application Attack</field>
+    <description>Mini-SOC: attaque applicative web detectee par Suricata</description>
+    <group>ids,suricata,attack,mitre_T1190,</group>
+  </rule>
+
+  <!-- Suricata : tentative d'admin (brute force) -> HIGH -->
+  <rule id="100012" level="10">
+    <if_sid>86601</if_sid>
+    <field name="alert.category">Attempted Administrator Privilege Gain</field>
+    <description>Mini-SOC: tentative de gain de privileges (brute force probable)</description>
+    <group>ids,suricata,authentication_failures,mitre_T1110,</group>
+  </rule>
+
+  <!-- SSH : authentification réussie juste après des échecs = compromission probable.
+       5715 = "sshd: authentication success". On garde un niveau eleve pour
+       que le correlateur Python remonte un incident CRITICAL. -->
+  <rule id="100020" level="12" frequency="1" timeframe="120">
+    <if_matched_sid>5760</if_matched_sid>
+    <if_sid>5715</if_sid>
+    <same_source_ip />
+    <description>Mini-SOC: connexion SSH reussie apres echecs repetes (compromission probable)</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+    <group>authentication_success,authentication_failures,mitre_T1110,</group>
+  </rule>
+
+  <!-- FIM : modification d'une regle nftables hors orchestrateur -->
+  <rule id="100030" level="9">
+    <if_sid>550,553</if_sid>
+    <field name="file">/etc/nftables.conf</field>
+    <description>Mini-SOC: modification de la configuration nftables detectee (FIM)</description>
+    <group>syscheck,mitre_T1562,</group>
+  </rule>
+
+</group>

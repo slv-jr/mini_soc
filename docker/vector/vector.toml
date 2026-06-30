@@ -1,0 +1,192 @@
+# ============================================================
+# Mini-SOC — pipeline d'ingestion Vector
+# Suricata eve.json + Zeek logs  ->  normalisation  ->  Redis (pisoc:raw)
+# La sortie est STRICTEMENT au schéma pipeline/schema.py:NetworkEvent
+# (sinon NetworkEvent.from_json lève une exception côté Python).
+# Wazuh, lui, ingère eve.json via son propre agent (voir phase 3).
+# ============================================================
+
+data_dir = "/var/lib/vector"
+
+# ── SOURCES ──────────────────────────────────────────────────────────────────
+[sources.suricata_eve]
+type = "file"
+include = ["/var/log/suricata/eve.json"]
+read_from = "beginning"
+
+[sources.zeek_logs]
+type = "file"
+include = ["/var/log/zeek/conn.log", "/var/log/zeek/notice.log", "/var/log/zeek/dns.log"]
+read_from = "beginning"
+
+# ── PARSE : décodage JSON brut ───────────────────────────────────────────────
+[transforms.suricata_parse]
+type = "remap"
+inputs = ["suricata_eve"]
+drop_on_error = true
+source = '''
+. = parse_json!(.message)
+'''
+
+[transforms.zeek_parse]
+type = "remap"
+inputs = ["zeek_logs"]
+drop_on_error = true
+source = '''
+parsed = parse_json!(.message)
+parsed._zeek_path = string(.file) ?? ""
+. = parsed
+'''
+
+# ── NORMALISATION SURICATA -> NetworkEvent ──────────────────────────────────
+[transforms.suricata_norm]
+type = "remap"
+inputs = ["suricata_parse"]
+drop_on_error = false
+source = '''
+ev_type = string(.event_type) ?? "flow"
+
+# On ne garde que ce qui a de la valeur : alertes (sécurité) et flux (métriques).
+if ev_type != "alert" && ev_type != "flow" {
+    abort
+}
+
+# Horodatage ISO compatible datetime.fromisoformat (offset avec ':').
+ts = parse_timestamp(.timestamp, format: "%Y-%m-%dT%H:%M:%S%.f%z") ?? now()
+ts_str = format_timestamp!(ts, format: "%Y-%m-%dT%H:%M:%S%.6f%:z")
+
+tags = {}
+metrics = {}
+sev = "info"
+message = ""
+
+if ev_type == "alert" {
+    out_type = "alert"
+    alert = object(.alert) ?? {}
+    sig_sev = int(alert.severity) ?? 3
+    if sig_sev == 1 {
+        sev = "high"
+    } else if sig_sev == 2 {
+        sev = "medium"
+    } else {
+        sev = "low"
+    }
+    message = string(alert.signature) ?? "Suricata alert"
+    tags.rule = string(alert.signature_id) ?? ""
+    tags.signature = message
+    tags.category = string(alert.category) ?? ""
+    # Métadonnées MITRE émises par les règles (custom + ET Open).
+    meta = object(alert.metadata) ?? {}
+    if exists(meta.mitre_technique_id) {
+        tags.mitre_technique_id = meta.mitre_technique_id
+    }
+    if exists(meta.mitre_tactic_id) {
+        tags.mitre_tactic_id = meta.mitre_tactic_id
+    }
+} else {
+    # flow -> on en fait un événement "packet" pour les métriques/top-talkers.
+    out_type = "packet"
+    flow = object(.flow) ?? {}
+    bytes_total = (int(flow.bytes_toserver) ?? 0) + (int(flow.bytes_toclient) ?? 0)
+    pkts_total = (int(flow.pkts_toserver) ?? 0) + (int(flow.pkts_toclient) ?? 0)
+    metrics.bytes = bytes_total
+    metrics.packets = pkts_total
+    message = "flow"
+}
+
+. = {
+    "event_type": out_type,
+    "timestamp": ts_str,
+    "event_id": slice!(uuid_v4(), 0, 8),
+    "src_ip": .src_ip,
+    "dst_ip": .dest_ip,
+    "src_port": .src_port,
+    "dst_port": .dest_port,
+    "protocol": upcase(string(.proto) ?? ""),
+    "interface": get_env_var("SOC_IFACE") ?? "eth0",
+    "message": message,
+    "raw": null,
+    "severity": sev,
+    "source": "suricata",
+    "tags": tags,
+    "metrics": metrics
+}
+'''
+
+# ── NORMALISATION ZEEK -> NetworkEvent ──────────────────────────────────────
+[transforms.zeek_norm]
+type = "remap"
+inputs = ["zeek_parse"]
+drop_on_error = false
+source = '''
+path = string(._zeek_path) ?? ""
+
+ts = parse_timestamp(to_string(.ts), format: "%s%.f") ?? now()
+ts_str = format_timestamp!(ts, format: "%Y-%m-%dT%H:%M:%S%.6f%:z")
+
+tags = {}
+metrics = {}
+sev = "info"
+out_type = "packet"
+message = ""
+
+if match(path, r'notice') {
+    # notice.log : nos détections MITRE (scan, beacon) -> alerte.
+    out_type = "alert"
+    sev = "medium"
+    message = string(.msg) ?? "Zeek notice"
+    tags.rule = string(.note) ?? "zeek_notice"
+    if exists(.sub) {
+        tags.mitre_technique_id = .sub
+    }
+} else if match(path, r'dns') {
+    out_type = "packet"
+    message = "dns " + (string(.query) ?? "")
+    tags.dns_query = string(.query) ?? ""
+} else {
+    # conn.log : flux réseau pour métriques/topologie.
+    out_type = "packet"
+    metrics.bytes = (int(.orig_bytes) ?? 0) + (int(.resp_bytes) ?? 0)
+    metrics.packets = (int(.orig_pkts) ?? 0) + (int(.resp_pkts) ?? 0)
+    message = "conn"
+}
+
+. = {
+    "event_type": out_type,
+    "timestamp": ts_str,
+    "event_id": slice!(uuid_v4(), 0, 8),
+    "src_ip": ."id.orig_h",
+    "dst_ip": ."id.resp_h",
+    "src_port": ."id.orig_p",
+    "dst_port": ."id.resp_p",
+    "protocol": upcase(string(.proto) ?? ""),
+    "interface": get_env_var("SOC_IFACE") ?? "eth0",
+    "message": message,
+    "raw": null,
+    "severity": sev,
+    "source": "zeek",
+    "tags": tags,
+    "metrics": metrics
+}
+'''
+
+# ── SINK : Redis (file pisoc:raw, compatible pipeline/queue.py) ──────────────
+[sinks.redis_raw]
+type = "redis"
+inputs = ["suricata_norm", "zeek_norm"]
+url = "redis://redis:6379/0"
+key = "pisoc:raw"
+data_type = "list"
+
+[sinks.redis_raw.list]
+method = "lpush"
+
+[sinks.redis_raw.encoding]
+codec = "json"
+
+# Debug optionnel : décommenter pour voir les événements normalisés en console.
+# [sinks.console_debug]
+# type = "console"
+# inputs = ["suricata_norm", "zeek_norm"]
+# [sinks.console_debug.encoding]
+# codec = "json"
