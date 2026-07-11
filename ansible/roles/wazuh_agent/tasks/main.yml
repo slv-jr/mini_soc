@@ -1,21 +1,26 @@
 ---
-- name: Ajouter la clé GPG du dépôt Wazuh
-  ansible.builtin.get_url:
-    url: https://packages.wazuh.com/key/GPG-KEY-WAZUH
-    dest: /etc/apt/keyrings/wazuh.gpg.key
-    mode: "0644"
+- name: Nettoyer l'ancienne configuration du dépôt Wazuh (keyring invalide)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /usr/share/keyrings/wazuh.gpg
+    - /etc/apt/keyrings/wazuh.gpg.key
+    - /etc/apt/sources.list.d/wazuh.list
 
-- name: Importer la clé Wazuh au format keyring
-  ansible.builtin.shell: >
-    gpg --no-default-keyring --keyring /usr/share/keyrings/wazuh.gpg
-    --import /etc/apt/keyrings/wazuh.gpg.key
-  args:
-    creates: /usr/share/keyrings/wazuh.gpg
+- name: Installer python3-debian (requis par deb822_repository)
+  ansible.builtin.apt:
+    name: python3-debian
+    state: present
 
-- name: Ajouter le dépôt APT Wazuh
-  ansible.builtin.apt_repository:
-    repo: "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main"
-    filename: wazuh
+- name: Ajouter le dépôt APT Wazuh (format deb822, clé gérée automatiquement)
+  ansible.builtin.deb822_repository:
+    name: wazuh
+    types: deb
+    uris: https://packages.wazuh.com/4.x/apt/
+    suites: stable
+    components: main
+    signed_by: https://packages.wazuh.com/key/GPG-KEY-WAZUH
     state: present
 
 - name: Installer l'agent Wazuh

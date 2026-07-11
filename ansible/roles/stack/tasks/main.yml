@@ -40,8 +40,8 @@
 - name: Récapitulatif d'accès
   ansible.builtin.debug:
     msg:
-      - "Dashboard Mini-SOC : http://{{ ansible_default_ipv4.address | default('localhost') }}:5000"
-      - "Grafana            : http://{{ ansible_default_ipv4.address | default('localhost') }}:3000"
-      - "Wazuh dashboard    : https://{{ ansible_default_ipv4.address | default('localhost') }}:5601"
+      - "Dashboard Mini-SOC : http://{{ ansible_facts['default_ipv4']['address'] | default('localhost') }}:5000"
+      - "Grafana            : http://{{ ansible_facts['default_ipv4']['address'] | default('localhost') }}:3000"
+      - "Wazuh dashboard    : https://{{ ansible_facts['default_ipv4']['address'] | default('localhost') }}:5601"
       - "Secrets générés dans {{ minisoc_dir }}/docker/.env"
       - "Démarrer le moteur Python : sudo systemctl start minisoc"

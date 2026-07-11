@@ -162,11 +162,14 @@ class SQLiteStorage:
     def block_ip(self, ip: str, reason: str, duration_seconds: int = 3600) -> None:
         from datetime import timedelta
         expires = datetime.now(timezone.utc) + timedelta(seconds=duration_seconds)
+        # Format aligné sur SQLite datetime('now') (UTC, séparateur espace, sans
+        # offset) pour que la comparaison expires_at > datetime('now') soit valide.
+        expires_str = expires.strftime("%Y-%m-%d %H:%M:%S")
         with self._conn() as conn:
             conn.execute(
                 """INSERT OR REPLACE INTO blocked_ips (ip, reason, expires_at, active)
                    VALUES (?,?,?,1)""",
-                (ip, reason, expires.isoformat()),
+                (ip, reason, expires_str),
             )
 
     def is_blocked(self, ip: str) -> bool:

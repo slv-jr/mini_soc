@@ -1,7 +1,7 @@
 ---
 # ── Cible de déploiement ────────────────────────────────────────────────────
 minisoc_dir: /opt/mini-soc
-minisoc_user: "{{ ansible_user_id }}"
+minisoc_user: "{{ ansible_facts['user_id'] }}"
 
 # ── Réseau surveillé ────────────────────────────────────────────────────────
 # Laisser vide pour auto-détecter l'interface par défaut (ansible_default_ipv4).
