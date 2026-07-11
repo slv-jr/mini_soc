@@ -25,7 +25,7 @@ Issu de la migration d'un prototype Raspberry Pi (voir [docs/migration.md](docs/
 |---|---|
 | IDS/IPS | Suricata 7 + ruleset ET Open + règles custom MITRE |
 | Analyse protocolaire | Zeek 6 (conn/dns/http/ssl/notice) |
-| HIDS + SIEM | Wazuh 4.9 (manager + indexer + dashboard) |
+| HIDS + SIEM | Wazuh 4.14 (manager + indexer + dashboard) |
 | Ingestion / normalisation | Vector (VRL → schéma `NetworkEvent`) |
 | Bus de messages | Redis 7 |
 | Métriques | InfluxDB 2 + Grafana 10 |

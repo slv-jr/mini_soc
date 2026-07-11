@@ -38,5 +38,5 @@ telegram_chat_id: ""
 
 # ── Wazuh ────────────────────────────────────────────────────────────────────
 install_wazuh_agent: true
-wazuh_agent_version: "4.9.0-1"
+wazuh_agent_version: "4.14.0-1"
 wazuh_manager_ip: "127.0.0.1"

@@ -23,19 +23,23 @@
     signed_by: https://packages.wazuh.com/key/GPG-KEY-WAZUH
     state: present
 
-- name: Installer l'agent Wazuh
+- name: Installer l'agent Wazuh (version alignée sur le manager, downgrade autorisé)
   ansible.builtin.apt:
     name: "wazuh-agent={{ wazuh_agent_version }}"
     state: present
     update_cache: true
+    allow_downgrade: true      # force la version du manager même si une plus récente est installée
   environment:
     WAZUH_MANAGER: "{{ wazuh_manager_ip }}"
+  notify: restart wazuh-agent
 
 - name: Déployer la configuration de l'agent
   ansible.builtin.copy:
     src: "{{ minisoc_dir }}/docker/wazuh/agent/ossec-agent.conf"
     dest: /var/ossec/etc/ossec.conf
     remote_src: true
+    owner: root
+    group: wazuh          # les démons Wazuh (user wazuh) doivent lire la config
     mode: "0640"
   notify: restart wazuh-agent
 
@@ -62,6 +66,30 @@
   when: wazuh_enroll_port is succeeded
   ignore_errors: true
 
+- name: Créer le répertoire de surcharge systemd de l'agent
+  ansible.builtin.file:
+    path: /etc/systemd/system/wazuh-agent.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Allonger le timeout de démarrage systemd de l'agent (init lente sous charge SIEM)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/wazuh-agent.service.d/override.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Service]
+      TimeoutStartSec=300
+  register: wazuh_agent_override
+
+- name: Recharger systemd si l'override a changé
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: wazuh_agent_override is changed
+
 - name: Activer l'agent Wazuh au démarrage
   ansible.builtin.systemd:
     name: wazuh-agent
@@ -73,7 +101,7 @@
     state: started
   register: wazuh_agent_start
   retries: 3
-  delay: 10
+  delay: 15
   until: wazuh_agent_start is succeeded
   ignore_errors: true
 
