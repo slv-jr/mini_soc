@@ -19,6 +19,9 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=mini-soc
 Environment=PYTHONUNBUFFERED=1
+# Source unique de vérité (réseau, hôtes des services, secrets, token API).
+# Le '-' rend le fichier optionnel (le service démarre même s'il est absent).
+EnvironmentFile=-/opt/mini-soc/docker/.env
 
 [Install]
 WantedBy=multi-user.target

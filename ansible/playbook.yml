@@ -13,17 +13,20 @@
   gather_facts: true
 
   pre_tasks:
-    - name: Résoudre l'interface réseau à surveiller
+    - name: Résoudre l'interface et la passerelle réseau à surveiller
       ansible.builtin.set_fact:
         soc_iface_resolved: "{{ soc_iface if soc_iface | length > 0 else ansible_facts['default_ipv4']['interface'] | default('eth0') }}"
+        soc_gateway_resolved: "{{ soc_gateway if soc_gateway | length > 0 else ansible_facts['default_ipv4']['gateway'] | default('') }}"
 
     - name: Afficher le contexte de déploiement
       ansible.builtin.debug:
-        msg: "Interface={{ soc_iface_resolved }} | profils={{ soc_profiles | join(',') }} | heap={{ opensearch_heap }}"
+        msg: "Interface={{ soc_iface_resolved }} | passerelle={{ soc_gateway_resolved | default('n/a') }} | profils={{ soc_profiles | join(',') }} | heap={{ opensearch_heap }}"
 
   roles:
     - common
     - docker
     - minisoc
-    - { role: wazuh_agent, when: install_wazuh_agent | bool }
+    # La stack (dont le manager Wazuh conteneurisé) doit être démarrée AVANT
+    # l'agent, sinon l'enrôlement sur le manager local échoue au premier boot.
     - stack
+    - { role: wazuh_agent, when: install_wazuh_agent | bool }

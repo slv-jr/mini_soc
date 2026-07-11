@@ -4,29 +4,32 @@
 # (variables du .env Docker / systemd), jamais stockés ici.
 # ============================================================
 
+# Topologie réseau : AUCUNE valeur en dur ici. Tout vient de l'environnement
+# (docker/.env généré par Ansible, ou export manuel). Les défauts ne servent
+# qu'au poste de dev / aux tests hors déploiement.
 network:
-  interface: "eth0"            # interface filaire du PC (ip -br link pour la trouver)
-  subnet: "192.168.1.0/24"    # sous-réseau surveillé
-  gateway: "192.168.1.1"      # passerelle (jamais bloquée)
+  interface: "${SOC_IFACE:-eth0}"        # ip -br link pour trouver la vôtre
+  subnet: "${SOC_SUBNET:-192.168.1.0/24}"
+  gateway: "${SOC_GATEWAY:-192.168.1.1}" # passerelle (jamais bloquée)
 
 # ── Sondes actives (conservées de la v1) ────────────────────────────────────
 probe:
   targets:
-    - host: "192.168.1.1"
+    - host: "${SOC_GATEWAY:-192.168.1.1}"
       name: "Gateway"
       check_http: false
-    - host: "8.8.8.8"
-      name: "Google DNS"
+    - host: "${PROBE_DNS1:-8.8.8.8}"
+      name: "DNS primaire"
       check_http: false
-    - host: "1.1.1.1"
-      name: "Cloudflare DNS"
+    - host: "${PROBE_DNS2:-1.1.1.1}"
+      name: "DNS secondaire"
       check_http: false
   interval_seconds: 30
   http_timeout: 5
 
 # ── Bus Redis ────────────────────────────────────────────────────────────────
 redis:
-  host: "localhost"
+  host: "${REDIS_HOST:-localhost}"
   port: 6379
   db: 0
   queues:
@@ -36,10 +39,10 @@ redis:
 
 # ── Métriques time-series ────────────────────────────────────────────────────
 influxdb:
-  url: "http://localhost:8086"
-  token: "${INFLUXDB_TOKEN}"       # surchargé par l'env si présent (voir loader)
-  org: "minisoc"
-  bucket: "network_metrics"
+  url: "${INFLUXDB_URL:-http://localhost:8086}"
+  token: "${INFLUXDB_TOKEN}"       # secret : uniquement via l'environnement
+  org: "${INFLUXDB_ORG:-minisoc}"
+  bucket: "${INFLUXDB_BUCKET:-network_metrics}"
 
 sqlite:
   path: "data/events.db"
@@ -75,10 +78,10 @@ detection:
 
 # ── Wazuh (SIEM + active response) ───────────────────────────────────────────
 wazuh:
-  api_url: "https://localhost:55000"
-  api_user: "wazuh-wui"            # mot de passe via WAZUH_API_PASSWORD (env)
-  verify_ssl: false
-  dashboard_url: "https://localhost:5601"
+  api_url: "${WAZUH_API_URL:-https://localhost:55000}"
+  api_user: "${WAZUH_API_USERNAME:-wazuh-wui}"   # mot de passe via WAZUH_API_PASSWORD (env)
+  verify_ssl: false                # certificat auto-signé de la stack : vérif désactivée
+  dashboard_url: "${WAZUH_DASHBOARD_URL:-https://localhost:5601}"
 
 # ── Alerting multi-canal ──────────────────────────────────────────────────────
 alerting:
@@ -108,13 +111,22 @@ responder:
   min_severity: "high"
   whitelist_ips:
     - "127.0.0.1"
-    - "192.168.1.1"
+    - "${SOC_GATEWAY:-192.168.1.1}"   # la passerelle n'est jamais bloquée
 
 # ── Dashboard topologie ──────────────────────────────────────────────────────
 dashboard:
-  flask_host: "0.0.0.0"
+  # 0.0.0.0 par défaut : requis pour que le manager Wazuh conteneurisé atteigne
+  # le webhook via host.docker.internal. Les actions sensibles (POST) sont
+  # protégées par MINISOC_API_TOKEN — À DÉFINIR dès que l'hôte est sur un LAN.
+  flask_host: "${DASHBOARD_HOST:-0.0.0.0}"
   flask_port: 5000
   arp_scan_interval: 60
+  # Origines autorisées pour le CORS (séparées par des virgules). '*' = toutes
+  # (déconseillé). Par défaut : uniquement l'accès local.
+  cors_origins: "${DASHBOARD_CORS_ORIGINS:-http://localhost:5000,http://127.0.0.1:5000}"
+  # Jeton partagé exigé sur les endpoints qui modifient l'état (POST). Vide =
+  # endpoints ouverts (uniquement acceptable si flask_host reste en loopback).
+  api_token: "${MINISOC_API_TOKEN:-}"
 
 # ── Journalisation ────────────────────────────────────────────────────────────
 logging:

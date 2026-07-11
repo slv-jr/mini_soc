@@ -2,8 +2,11 @@
 config/loader.py
 Chargement et accès à la configuration centrale.
 
-Les valeurs de type "${VAR}" sont remplacées par la variable d'environnement
-correspondante au chargement (permet de garder les secrets hors du YAML).
+Toute la config spécifique à l'hôte (interface, sous-réseau, passerelle, hôtes
+des services, secrets) vit dans l'environnement — jamais en dur dans le code.
+Deux syntaxes sont supportées dans le YAML :
+  ${VAR}            -> valeur de l'env, ou chaîne vide si absente
+  ${VAR:-defaut}    -> valeur de l'env, ou "defaut" si absente/vide
 """
 import logging
 import os
@@ -16,13 +19,22 @@ logger = logging.getLogger(__name__)
 
 _config: dict = {}
 _CONFIG_PATH = Path(__file__).parent / "settings.yaml"
-_ENV_PATTERN = re.compile(r"\$\{(\w+)\}")
+# Capture VAR et un éventuel défaut après ":-".
+_ENV_PATTERN = re.compile(r"\$\{(\w+)(?::-([^}]*))?\}")
+
+
+def _sub_env(match: "re.Match") -> str:
+    var, default = match.group(1), match.group(2)
+    val = os.environ.get(var, "")
+    if val == "" and default is not None:
+        return default
+    return val
 
 
 def _expand_env(value):
-    """Remplace récursivement les ${VAR} par les variables d'environnement."""
+    """Remplace récursivement les ${VAR} / ${VAR:-defaut} par l'environnement."""
     if isinstance(value, str):
-        return _ENV_PATTERN.sub(lambda m: os.environ.get(m.group(1), ""), value)
+        return _ENV_PATTERN.sub(_sub_env, value)
     if isinstance(value, dict):
         return {k: _expand_env(v) for k, v in value.items()}
     if isinstance(value, list):

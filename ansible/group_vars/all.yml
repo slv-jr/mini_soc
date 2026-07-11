@@ -4,9 +4,16 @@ minisoc_dir: /opt/mini-soc
 minisoc_user: "{{ ansible_facts['user_id'] }}"
 
 # ── Réseau surveillé ────────────────────────────────────────────────────────
-# Laisser vide pour auto-détecter l'interface par défaut (ansible_default_ipv4).
-soc_iface: ""
+# Laisser vide pour auto-détecter (via ansible_facts.default_ipv4).
+soc_iface: ""          # ex: enp19s0 ; vide = interface par défaut détectée
 soc_subnet: "192.168.1.0/24"
+soc_gateway: ""        # vide = passerelle par défaut détectée
+
+# ── Exposition du dashboard Mini-SOC ────────────────────────────────────────
+# 0.0.0.0 requis pour que le manager Wazuh (conteneur) atteigne le webhook.
+# Les actions sensibles sont protégées par un token d'API généré plus bas.
+dashboard_host: "0.0.0.0"
+dashboard_cors_origins: "http://localhost:5000,http://127.0.0.1:5000"
 
 # ── Profils Docker à activer (core toujours actif) ──────────────────────────
 # Options : sensors, siem, lab. Adapter à la RAM disponible.

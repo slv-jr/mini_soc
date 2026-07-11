@@ -8,6 +8,8 @@ Serveur Flask — API REST + dashboard temps réel du Mini-SOC.
   - flux temps réel via Server-Sent Events
 Accessible sur http://<ip-hote>:5000
 """
+import functools
+import hmac
 import json
 import logging
 import subprocess
@@ -16,7 +18,7 @@ import time
 from datetime import datetime, timezone
 
 import redis as redis_lib
-from flask import Flask, Response, jsonify, render_template_string, request
+from flask import Flask, Response, abort, jsonify, render_template_string, request
 from flask_cors import CORS
 
 from config import loader
@@ -24,10 +26,32 @@ from storage.sqlite_db import get_db
 
 logger = logging.getLogger(__name__)
 app = Flask(__name__)
-CORS(app)
+
+# CORS restreint aux origines configurées (jamais "tout autorisé" par défaut).
+_cors_origins = [o.strip() for o in str(loader.get("dashboard.cors_origins", "")).split(",") if o.strip()]
+CORS(app, origins=_cors_origins or ["http://localhost:5000", "http://127.0.0.1:5000"])
+
+# Jeton partagé exigé sur les endpoints qui modifient l'état (POST).
+_API_TOKEN = str(loader.get("dashboard.api_token", "") or "")
+if not _API_TOKEN:
+    logger.warning("MINISOC_API_TOKEN non défini : les endpoints POST sont ouverts. "
+                   "Ne pas exposer le dashboard hors de la loopback sans token.")
 
 _topology: dict[str, dict] = {}
 _topology_lock = threading.Lock()
+
+
+def require_token(view):
+    """Protège un endpoint : exige un Bearer token constant-time si configuré."""
+    @functools.wraps(view)
+    def _wrapped(*args, **kwargs):
+        if _API_TOKEN:
+            auth = request.headers.get("Authorization", "")
+            provided = auth[7:] if auth.startswith("Bearer ") else request.headers.get("X-API-Token", "")
+            if not hmac.compare_digest(provided, _API_TOKEN):
+                abort(401)
+        return view(*args, **kwargs)
+    return _wrapped
 
 
 # ── Topologie réseau (scan ARP) ──────────────────────────────────────────────
@@ -120,6 +144,7 @@ def api_incidents():
 
 
 @app.route("/api/wazuh-event", methods=["POST"])
+@require_token
 def api_wazuh_event():
     """Boucle de feedback : réinjecte une alerte Wazuh dans le corrélateur."""
     try:
@@ -132,6 +157,7 @@ def api_wazuh_event():
 
 
 @app.route("/api/block", methods=["POST"])
+@require_token
 def api_block():
     ip = (request.get_json(force=True) or {}).get("ip")
     if not ip:
@@ -142,6 +168,7 @@ def api_block():
 
 
 @app.route("/api/unblock", methods=["POST"])
+@require_token
 def api_unblock():
     ip = (request.get_json(force=True) or {}).get("ip")
     if not ip:

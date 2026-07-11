@@ -46,15 +46,42 @@
     replace: "{{ wazuh_manager_ip }}"
   notify: restart wazuh-agent
 
+- name: Attendre que le port d'enrôlement du manager (1515) réponde
+  ansible.builtin.wait_for:
+    host: "{{ wazuh_manager_ip }}"
+    port: 1515
+    timeout: 120
+  register: wazuh_enroll_port
+  ignore_errors: true
+
 - name: Enregistrer l'agent auprès du manager (idempotent)
   ansible.builtin.shell: >
     /var/ossec/bin/agent-auth -m {{ wazuh_manager_ip }} -p 1515
   args:
     creates: /var/ossec/etc/client.keys
+  when: wazuh_enroll_port is succeeded
   ignore_errors: true
 
-- name: Activer et démarrer l'agent Wazuh
+- name: Activer l'agent Wazuh au démarrage
   ansible.builtin.systemd:
     name: wazuh-agent
     enabled: true
+
+- name: Démarrer l'agent Wazuh (tolère un manager pas encore prêt — retry auto)
+  ansible.builtin.systemd:
+    name: wazuh-agent
     state: started
+  register: wazuh_agent_start
+  retries: 3
+  delay: 10
+  until: wazuh_agent_start is succeeded
+  ignore_errors: true
+
+- name: Avertir si l'agent n'a pas démarré (le manager conteneurisé finit de s'initialiser)
+  ansible.builtin.debug:
+    msg: >-
+      L'agent Wazuh n'a pas démarré immédiatement. C'est normal si le manager
+      conteneurisé finit de s'initialiser : systemd le relancera (Restart=on-failure)
+      dès que le manager acceptera les connexions. Vérifier avec
+      'systemctl status wazuh-agent' puis 'journalctl -u wazuh-agent'.
+  when: wazuh_agent_start is failed

@@ -194,6 +194,8 @@ services:
       - INDEXER_PASSWORD=${INDEXER_PASSWORD:?indexer password requis}
       - API_USERNAME=${WAZUH_API_USERNAME:-wazuh-wui}
       - API_PASSWORD=${WAZUH_API_PASSWORD:?wazuh api password requis}
+      # Transmis à l'intégration custom-minisoc pour authentifier le webhook.
+      - MINISOC_API_TOKEN=${MINISOC_API_TOKEN:-}
     volumes:
       - wazuh_manager_data:/var/ossec/data
       - ./wazuh/config/wazuh_cluster/wazuh_manager.conf:/wazuh-config-mount/etc/ossec.conf

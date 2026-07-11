@@ -32,3 +32,21 @@ def test_env_expansion_missing_var_becomes_empty(monkeypatch, tmp_path):
     data = loader.load(cfg_file)
     assert data["k"] == ""
     loader.load()
+
+
+def test_default_syntax_used_when_var_absent(monkeypatch, tmp_path):
+    monkeypatch.delenv("SOC_IFACE", raising=False)
+    cfg_file = tmp_path / "s.yaml"
+    cfg_file.write_text("iface: \"${SOC_IFACE:-eth0}\"\n", encoding="utf-8")
+    data = loader.load(cfg_file)
+    assert data["iface"] == "eth0"
+    loader.load()
+
+
+def test_default_syntax_overridden_by_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("SOC_IFACE", "enp19s0")
+    cfg_file = tmp_path / "s.yaml"
+    cfg_file.write_text("iface: \"${SOC_IFACE:-eth0}\"\n", encoding="utf-8")
+    data = loader.load(cfg_file)
+    assert data["iface"] == "enp19s0"
+    loader.load()

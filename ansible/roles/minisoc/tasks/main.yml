@@ -43,6 +43,7 @@
     wazuh_api_password: "{{ lookup('password', '/dev/null length=20 chars=ascii_letters,digits') }}A1"
     indexer_password: "{{ lookup('password', '/dev/null length=20 chars=ascii_letters,digits') }}A1"
     dashboard_password: "{{ lookup('password', '/dev/null length=20 chars=ascii_letters,digits') }}A1"
+    minisoc_api_token: "{{ lookup('password', '/dev/null length=40 chars=ascii_letters,digits') }}"
   when: not env_stat.stat.exists
 
 - name: Écrire le fichier .env de la stack Docker

@@ -8,6 +8,7 @@
 # avec un wrapper shell custom-minisoc -> python3 custom-minisoc.py.
 # ============================================================
 import json
+import os
 import sys
 
 try:
@@ -25,16 +26,22 @@ def main() -> int:
     with open(alert_file, encoding="utf-8") as f:
         alert = json.load(f)
 
+    # Token d'API partagé (exigé par les endpoints POST du dashboard Mini-SOC).
+    # Fourni via l'environnement du conteneur manager (MINISOC_API_TOKEN).
+    headers = {"Content-Type": "application/json"}
+    token = os.environ.get("MINISOC_API_TOKEN", "")
+    if token:
+        headers["X-API-Token"] = token
+
     if requests is None:
         # Fallback urllib si requests indisponible dans l'env Wazuh.
         import urllib.request
         data = json.dumps(alert).encode()
-        req = urllib.request.Request(hook_url, data=data,
-                                     headers={"Content-Type": "application/json"})
+        req = urllib.request.Request(hook_url, data=data, headers=headers)
         urllib.request.urlopen(req, timeout=5)
         return 0
 
-    requests.post(hook_url, json=alert, timeout=5)
+    requests.post(hook_url, json=alert, headers=headers, timeout=5)
     return 0
 
 
