@@ -35,24 +35,44 @@
     path: "{{ minisoc_dir }}/docker/.env"
   register: env_stat
 
-- name: Générer des secrets aléatoires (au premier déploiement uniquement)
-  ansible.builtin.set_fact:
-    influx_password: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
-    influx_token: "{{ lookup('password', '/dev/null length=40 chars=ascii_letters,digits') }}"
-    grafana_password: "{{ lookup('password', '/dev/null length=20 chars=ascii_letters,digits') }}"
-    wazuh_api_password: "{{ lookup('password', '/dev/null length=20 chars=ascii_letters,digits') }}A1"
-    indexer_password: "{{ lookup('password', '/dev/null length=20 chars=ascii_letters,digits') }}A1"
-    dashboard_password: "{{ lookup('password', '/dev/null length=20 chars=ascii_letters,digits') }}A1"
-    minisoc_api_token: "{{ lookup('password', '/dev/null length=40 chars=ascii_letters,digits') }}"
-  when: not env_stat.stat.exists
+- name: Lire le .env existant (pour préserver les secrets déjà générés)
+  ansible.builtin.slurp:
+    src: "{{ minisoc_dir }}/docker/.env"
+  register: env_slurp
+  when: env_stat.stat.exists
 
-- name: Écrire le fichier .env de la stack Docker
+- name: Indexer les valeurs existantes du .env (clé -> valeur)
+  ansible.builtin.set_fact:
+    env_existing: "{{ env_existing | default({}) | combine({ (item.split('=', 1)[0] | trim): item.split('=', 1)[1] }) }}"
+  loop: "{{ (env_slurp.content | b64decode).splitlines() }}"
+  loop_control:
+    label: "{{ item.split('=', 1)[0] | trim }}"
+  when:
+    - env_stat.stat.exists
+    - "'=' in item"
+    - not (item | trim).startswith('#')
+
+# Secrets : réutilise la valeur existante si présente, sinon en génère une.
+# -> le .env peut être régénéré à chaque run (nouvelles variables ajoutées)
+#    sans casser les mots de passe déjà enregistrés dans Influx/Grafana/Wazuh.
+- name: Déterminer les secrets de la stack
+  ansible.builtin.set_fact:
+    influx_password: "{{ _e.INFLUXDB_PASSWORD | default(lookup('password', '/dev/null length=24 chars=ascii_letters,digits'), true) }}"
+    influx_token: "{{ _e.INFLUXDB_TOKEN | default(lookup('password', '/dev/null length=40 chars=ascii_letters,digits'), true) }}"
+    grafana_password: "{{ _e.GRAFANA_PASSWORD | default(lookup('password', '/dev/null length=20 chars=ascii_letters,digits'), true) }}"
+    wazuh_api_password: "{{ _e.WAZUH_API_PASSWORD | default(lookup('password', '/dev/null length=20 chars=ascii_letters,digits') ~ 'A1', true) }}"
+    indexer_password: "{{ _e.INDEXER_PASSWORD | default(lookup('password', '/dev/null length=20 chars=ascii_letters,digits') ~ 'A1', true) }}"
+    dashboard_password: "{{ _e.DASHBOARD_PASSWORD | default(lookup('password', '/dev/null length=20 chars=ascii_letters,digits') ~ 'A1', true) }}"
+    minisoc_api_token: "{{ _e.MINISOC_API_TOKEN | default(lookup('password', '/dev/null length=40 chars=ascii_letters,digits'), true) }}"
+  vars:
+    _e: "{{ env_existing | default({}) }}"
+
+- name: Écrire le fichier .env de la stack Docker (secrets préservés, variables à jour)
   ansible.builtin.template:
     src: env.j2
     dest: "{{ minisoc_dir }}/docker/.env"
     owner: "{{ minisoc_user }}"
     mode: "0600"
-  when: not env_stat.stat.exists
 
 - name: Télécharger la base GeoLite2-City (si clé MaxMind fournie)
   ansible.builtin.get_url:
