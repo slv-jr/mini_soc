@@ -27,6 +27,21 @@
   when: "'siem' in soc_profiles"
   changed_when: true
 
+# Un ossec.conf / une règle invalide fait avorter tout `wazuh-control start`
+# (tous les démons restent à terre, y compris authd sur 1515). On teste la config
+# tout de suite pour remonter l'erreur RÉELLE ici, plutôt qu'une obscure erreur
+# SSL côté agent plusieurs minutes plus tard.
+- name: Vérifier la validité de la configuration Wazuh du manager (règles/décodeurs)
+  ansible.builtin.command:
+    cmd: docker exec minisoc-wazuh-manager /var/ossec/bin/wazuh-analysisd -t
+  register: wazuh_cfg_test
+  changed_when: false
+  retries: 12
+  delay: 5
+  until: wazuh_cfg_test.rc == 0
+  failed_when: wazuh_cfg_test.rc != 0
+  when: "'siem' in soc_profiles"
+
 - name: Attendre que le dashboard Flask réponde (si moteur démarré séparément)
   ansible.builtin.uri:
     url: "http://localhost:5000/api/status"

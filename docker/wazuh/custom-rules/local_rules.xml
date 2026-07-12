@@ -29,10 +29,12 @@
     <group>ids,suricata,authentication_failures,mitre_T1110,</group>
   </rule>
 
-  <!-- SSH : authentification réussie juste après des échecs = compromission probable.
-       5715 = "sshd: authentication success". On garde un niveau eleve pour
+  <!-- SSH : authentification réussie juste après plusieurs échecs = compromission probable.
+       5715 = "sshd: authentication success", 5760 = "sshd: authentication failed".
+       frequency doit être > 1 et < 10000 (contrainte wazuh-analysisd) : on exige
+       au moins 5 échecs de la même IP dans la fenêtre avant de lever l'alerte, pour
        que le correlateur Python remonte un incident CRITICAL. -->
-  <rule id="100020" level="12" frequency="1" timeframe="120">
+  <rule id="100020" level="12" frequency="5" timeframe="120">
     <if_matched_sid>5760</if_matched_sid>
     <if_sid>5715</if_sid>
     <same_source_ip />
