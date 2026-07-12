@@ -67,13 +67,31 @@
     state: absent
   when: wazuh_enroll_port is succeeded
 
-- name: Enregistrer l'agent auprès du manager
+# authd (service d'enrôlement) met souvent 1-2 min à accepter le TLS après un
+# (re)démarrage du manager : le port 1515 est publié par docker-proxy bien avant
+# que authd ne réponde (-> "unexpected eof while reading"). On réessaie donc
+# jusqu'à ce que l'enrôlement aboutisse réellement.
+- name: Enregistrer l'agent auprès du manager (retries — authd lent à accepter le TLS)
   ansible.builtin.command: >
     /var/ossec/bin/agent-auth -m {{ wazuh_manager_ip }} -p 1515
   when: wazuh_enroll_port is succeeded
   register: agent_auth
-  changed_when: "'Valid key' in agent_auth.stdout or 'Registering' in agent_auth.stdout"
+  until: agent_auth.rc == 0
+  retries: 15
+  delay: 15
+  changed_when: agent_auth.rc == 0
+  failed_when: false          # ne bloque pas le déploiement ; on avertit sinon
   notify: restart wazuh-agent
+
+- name: Avertir si l'enrôlement a échoué (l'agent s'enrôlera seul au démarrage)
+  ansible.builtin.debug:
+    msg: >-
+      Enrôlement auprès du manager échoué après plusieurs tentatives : authd
+      n'était pas prêt. L'agent tentera de s'enrôler automatiquement au
+      démarrage. Sinon, une fois le manager stabilisé :
+      'sudo /var/ossec/bin/agent-auth -m {{ wazuh_manager_ip }} -p 1515'
+      puis 'sudo systemctl restart wazuh-agent'.
+  when: (agent_auth.rc | default(0)) != 0
 
 - name: Créer le répertoire de surcharge systemd de l'agent
   ansible.builtin.file:

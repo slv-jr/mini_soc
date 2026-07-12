@@ -44,7 +44,7 @@ class Responder:
         self._prefer_wazuh = cfg.get("prefer_wazuh_ar", True)
         self._duration = cfg.get("block_duration_seconds", 3600)
         self._min_sev = cfg.get("min_severity", "high")
-        self._whitelist = set(cfg.get("whitelist_ips", ["127.0.0.1"]))
+        self._whitelist = {ip for ip in cfg.get("whitelist_ips", ["127.0.0.1"]) if (ip or "").strip()}
 
         wcfg = loader.get("wazuh", {}) or {}
         self._wazuh_url = wcfg.get("api_url", "")

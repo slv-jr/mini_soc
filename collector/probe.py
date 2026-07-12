@@ -104,7 +104,9 @@ async def probe_target(target: dict) -> None:
 
 
 async def run_probes() -> None:
-    targets = loader.get("probe.targets", [])
+    # Ignore les cibles non configurées (host vide) : évite de sonder une IP
+    # de repli arbitraire quand une variable d'environnement n'est pas définie.
+    targets = [t for t in loader.get("probe.targets", []) if (t.get("host") or "").strip()]
     interval = loader.get("probe.interval_seconds", 30)
     logger.info(f"Démarrage des probes sur {len(targets)} cibles, interval={interval}s")
 
