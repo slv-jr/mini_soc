@@ -1,19 +1,15 @@
 ---
-- name: Nettoyer l'ancienne configuration du dépôt Wazuh (keyring invalide)
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: absent
-  loop:
-    - /usr/share/keyrings/wazuh.gpg
-    - /etc/apt/keyrings/wazuh.gpg.key
-    - /etc/apt/sources.list.d/wazuh.list
+# Agent Wazuh sur l'hôte. L'enrôlement est automatique : le bloc <enrollment>
+# de la config fait que l'agent demande sa clé au manager (1515) au démarrage
+# et retente tout seul tant que le manager n'est pas prêt. Aucun agent-auth
+# manuel, aucune attente de port ici.
 
 - name: Installer python3-debian (requis par deb822_repository)
   ansible.builtin.apt:
     name: python3-debian
     state: present
 
-- name: Ajouter le dépôt APT Wazuh (format deb822, clé gérée automatiquement)
+- name: Ajouter le dépôt APT Wazuh (deb822, clé gérée automatiquement)
   ansible.builtin.deb822_repository:
     name: wazuh
     types: deb
@@ -23,14 +19,12 @@
     signed_by: https://packages.wazuh.com/key/GPG-KEY-WAZUH
     state: present
 
-- name: Installer l'agent Wazuh (version alignée sur le manager, downgrade autorisé)
+- name: Installer l'agent Wazuh (version alignée sur le manager)
   ansible.builtin.apt:
     name: "wazuh-agent={{ wazuh_agent_version }}"
     state: present
     update_cache: true
-    allow_downgrade: true      # force la version du manager même si une plus récente est installée
-  environment:
-    WAZUH_MANAGER: "{{ wazuh_manager_ip }}"
+    allow_downgrade: true
   notify: restart wazuh-agent
 
 - name: Déployer la configuration de l'agent
@@ -39,7 +33,7 @@
     dest: /var/ossec/etc/ossec.conf
     remote_src: true
     owner: root
-    group: wazuh          # les démons Wazuh (user wazuh) doivent lire la config
+    group: wazuh
     mode: "0640"
   notify: restart wazuh-agent
 
@@ -50,93 +44,8 @@
     replace: "{{ wazuh_manager_ip }}"
   notify: restart wazuh-agent
 
-- name: Attendre que le port d'enrôlement du manager (1515) réponde
-  ansible.builtin.wait_for:
-    host: "{{ wazuh_manager_ip }}"
-    port: 1515
-    timeout: 120
-  register: wazuh_enroll_port
-  ignore_errors: true
-
-# On ré-enrôle à chaque déploiement : le manager conteneurisé peut avoir été
-# recréé (montée de version), auquel cas son client.keys est reparti à zéro et
-# la clé locale de l'agent devient orpheline (-> SSL error / connection refused).
-- name: Retirer la clé d'agent potentiellement obsolète
-  ansible.builtin.file:
-    path: /var/ossec/etc/client.keys
-    state: absent
-  when: wazuh_enroll_port is succeeded
-
-# authd (service d'enrôlement) met souvent 1-2 min à accepter le TLS après un
-# (re)démarrage du manager : le port 1515 est publié par docker-proxy bien avant
-# que authd ne réponde (-> "unexpected eof while reading"). On réessaie donc
-# jusqu'à ce que l'enrôlement aboutisse réellement.
-- name: Enregistrer l'agent auprès du manager (retries — authd lent à accepter le TLS)
-  ansible.builtin.command: >
-    /var/ossec/bin/agent-auth -m {{ wazuh_manager_ip }} -p 1515
-  when: wazuh_enroll_port is succeeded
-  register: agent_auth
-  until: agent_auth.rc == 0
-  retries: 15
-  delay: 15
-  changed_when: agent_auth.rc == 0
-  failed_when: false          # ne bloque pas le déploiement ; on avertit sinon
-  notify: restart wazuh-agent
-
-- name: Avertir si l'enrôlement a échoué (l'agent s'enrôlera seul au démarrage)
-  ansible.builtin.debug:
-    msg: >-
-      Enrôlement auprès du manager échoué après plusieurs tentatives : authd
-      n'était pas prêt. L'agent tentera de s'enrôler automatiquement au
-      démarrage. Sinon, une fois le manager stabilisé :
-      'sudo /var/ossec/bin/agent-auth -m {{ wazuh_manager_ip }} -p 1515'
-      puis 'sudo systemctl restart wazuh-agent'.
-  when: (agent_auth.rc | default(0)) != 0
-
-- name: Créer le répertoire de surcharge systemd de l'agent
-  ansible.builtin.file:
-    path: /etc/systemd/system/wazuh-agent.service.d
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
-- name: Allonger le timeout de démarrage systemd de l'agent (init lente sous charge SIEM)
-  ansible.builtin.copy:
-    dest: /etc/systemd/system/wazuh-agent.service.d/override.conf
-    owner: root
-    group: root
-    mode: "0644"
-    content: |
-      [Service]
-      TimeoutStartSec=300
-  register: wazuh_agent_override
-
-- name: Recharger systemd si l'override a changé
-  ansible.builtin.systemd:
-    daemon_reload: true
-  when: wazuh_agent_override is changed
-
-- name: Activer l'agent Wazuh au démarrage
+- name: Activer et démarrer l'agent Wazuh
   ansible.builtin.systemd:
     name: wazuh-agent
     enabled: true
-
-- name: Démarrer l'agent Wazuh (tolère un manager pas encore prêt — retry auto)
-  ansible.builtin.systemd:
-    name: wazuh-agent
     state: started
-  register: wazuh_agent_start
-  retries: 3
-  delay: 15
-  until: wazuh_agent_start is succeeded
-  ignore_errors: true
-
-- name: Avertir si l'agent n'a pas démarré (le manager conteneurisé finit de s'initialiser)
-  ansible.builtin.debug:
-    msg: >-
-      L'agent Wazuh n'a pas démarré immédiatement. C'est normal si le manager
-      conteneurisé finit de s'initialiser : systemd le relancera (Restart=on-failure)
-      dès que le manager acceptera les connexions. Vérifier avec
-      'systemctl status wazuh-agent' puis 'journalctl -u wazuh-agent'.
-  when: wazuh_agent_start is failed

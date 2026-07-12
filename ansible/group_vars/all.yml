@@ -6,7 +6,7 @@ minisoc_user: "{{ ansible_facts['user_id'] }}"
 # ── Réseau surveillé ────────────────────────────────────────────────────────
 # Laisser vide pour auto-détecter (via ansible_facts.default_ipv4).
 soc_iface: ""          # ex: enp19s0 ; vide = interface par défaut détectée
-soc_subnet: "192.168.1.0/24"
+soc_subnet: ""         # ex: 192.168.1.0/24 ; vide = sous-réseau détecté
 soc_gateway: ""        # vide = passerelle par défaut détectée
 
 # ── Exposition du dashboard Mini-SOC ────────────────────────────────────────

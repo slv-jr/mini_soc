@@ -13,14 +13,20 @@
   gather_facts: true
 
   pre_tasks:
-    - name: Résoudre l'interface et la passerelle réseau à surveiller
+    - name: Résoudre la topologie réseau à surveiller (interface, passerelle, sous-réseau)
       ansible.builtin.set_fact:
         soc_iface_resolved: "{{ soc_iface if soc_iface | length > 0 else ansible_facts['default_ipv4']['interface'] | default('eth0') }}"
         soc_gateway_resolved: "{{ soc_gateway if soc_gateway | length > 0 else ansible_facts['default_ipv4']['gateway'] | default('') }}"
+        soc_subnet_resolved: >-
+          {%- if soc_subnet | length > 0 -%}
+          {{ soc_subnet }}
+          {%- elif ansible_facts['default_ipv4']['network'] is defined -%}
+          {{ ansible_facts['default_ipv4']['network'] }}/{{ ansible_facts['default_ipv4']['prefix'] }}
+          {%- endif -%}
 
     - name: Afficher le contexte de déploiement
       ansible.builtin.debug:
-        msg: "Interface={{ soc_iface_resolved }} | passerelle={{ soc_gateway_resolved | default('n/a') }} | profils={{ soc_profiles | join(',') }} | heap={{ opensearch_heap }}"
+        msg: "Interface={{ soc_iface_resolved }} | passerelle={{ soc_gateway_resolved | default('n/a') }} | sous-réseau={{ soc_subnet_resolved | default('n/a') }} | profils={{ soc_profiles | join(',') }} | heap={{ opensearch_heap }}"
 
   roles:
     - common
