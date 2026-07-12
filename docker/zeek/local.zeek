@@ -23,8 +23,9 @@
 # Ajoute community-id à conn.log -> clé de jointure commune avec Suricata.
 @load policy/protocols/conn/community-id-logging
 
-# Enrichissement géographique si la base GeoIP est présente dans l'image.
-@load policy/protocols/conn/geo-data
+# NB : l'enrichissement géographique n'est PAS chargé ici. Le script
+# policy/protocols/conn/geo-data n'existe plus dans Zeek 6.x, et la géoloc
+# est de toute façon réalisée côté moteur Python (base GeoLite2).
 
 # Notre script de tagging MITRE.
 @load ./mini-soc/mitre-tagging

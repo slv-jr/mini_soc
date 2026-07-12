@@ -104,7 +104,9 @@ services:
       - NET_RAW
       - SYS_NICE
     volumes:
-      - ./suricata/suricata.yaml:/etc/suricata/suricata.yaml:ro
+      # Pas de :ro — l'entrypoint de l'image jasonish/suricata fait un chown
+      # sur ce fichier au démarrage ; un montage read-only le fait crasher en boucle.
+      - ./suricata/suricata.yaml:/etc/suricata/suricata.yaml
       - ./suricata/rules:/var/lib/suricata/rules
       - suricata_logs:/var/log/suricata
     command: -i ${SOC_IFACE:-eth0}

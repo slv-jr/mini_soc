@@ -17,15 +17,27 @@
   register: compose_up
   changed_when: "'Started' in compose_up.stderr or 'Created' in compose_up.stderr"
 
-- name: Configurer l'intégration Wazuh -> webhook Mini-SOC (dans le manager)
+# Le wrapper vit dans la couche éphémère du conteneur : on ne l'(re)installe
+# que s'il manque (première install ou conteneur recréé). Surtout, on ne
+# redémarre le manager QUE dans ce cas — un `docker restart` à chaque run
+# coupait authd juste avant l'enrôlement de l'agent (SSL error / eof).
+- name: Installer le wrapper d'intégration custom-minisoc dans le manager
   ansible.builtin.shell: |
     docker exec minisoc-wazuh-manager sh -c '
+      test -x /var/ossec/integrations/custom-minisoc && exit 9
       printf "#!/bin/sh\nexec /var/ossec/framework/python/bin/python3 /var/ossec/integrations/custom-minisoc.py \"$@\"\n" > /var/ossec/integrations/custom-minisoc &&
       chmod 750 /var/ossec/integrations/custom-minisoc /var/ossec/integrations/custom-minisoc.py &&
       chown root:wazuh /var/ossec/integrations/custom-minisoc /var/ossec/integrations/custom-minisoc.py'
-    docker restart minisoc-wazuh-manager
+  register: integ_wrapper
+  changed_when: integ_wrapper.rc == 0
+  failed_when: integ_wrapper.rc not in [0, 9]
   when: "'siem' in soc_profiles"
-  changed_when: true
+
+- name: Redémarrer le manager uniquement si le wrapper vient d'être (re)créé
+  ansible.builtin.command: docker restart minisoc-wazuh-manager
+  when:
+    - "'siem' in soc_profiles"
+    - integ_wrapper is changed
 
 # Un ossec.conf / une règle invalide fait avorter tout `wazuh-control start`
 # (tous les démons restent à terre, y compris authd sur 1515). On teste la config
