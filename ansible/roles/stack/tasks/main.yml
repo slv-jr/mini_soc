@@ -10,6 +10,70 @@
     creates: "{{ minisoc_dir }}/docker/wazuh/config/certs/root-ca.pem"
   when: "'siem' in soc_profiles"
 
+# Les hashes bcrypt de internal_users.yml doivent correspondre aux mots de
+# passe générés dans le .env, sinon filebeat (manager) et le dashboard ne
+# peuvent pas s'authentifier auprès de l'indexer.
+- name: Calculer le hash bcrypt du mot de passe admin de l'indexer
+  ansible.builtin.command:
+    argv:
+      - docker
+      - run
+      - --rm
+      - -e
+      - JAVA_HOME=/usr/share/wazuh-indexer/jdk
+      - wazuh/wazuh-indexer:4.14.0
+      - bash
+      - /usr/share/wazuh-indexer/plugins/opensearch-security/tools/hash.sh
+      - -p
+      - "{{ indexer_password }}"
+  register: indexer_hash
+  changed_when: false
+  no_log: true
+  when: "'siem' in soc_profiles"
+
+- name: Calculer le hash bcrypt du mot de passe kibanaserver
+  ansible.builtin.command:
+    argv:
+      - docker
+      - run
+      - --rm
+      - -e
+      - JAVA_HOME=/usr/share/wazuh-indexer/jdk
+      - wazuh/wazuh-indexer:4.14.0
+      - bash
+      - /usr/share/wazuh-indexer/plugins/opensearch-security/tools/hash.sh
+      - -p
+      - "{{ dashboard_password }}"
+  register: dashboard_hash
+  changed_when: false
+  no_log: true
+  when: "'siem' in soc_profiles"
+
+- name: Écrire internal_users.yml avec les hashes des mots de passe du .env
+  ansible.builtin.copy:
+    dest: "{{ minisoc_dir }}/docker/wazuh/config/wazuh_indexer/internal_users.yml"
+    mode: "0644"
+    content: |
+      ---
+      # Généré par Ansible à partir des mots de passe du .env — ne pas éditer.
+      _meta:
+        type: "internalusers"
+        config_version: 2
+
+      admin:
+        hash: "{{ indexer_hash.stdout_lines[-1] }}"
+        reserved: true
+        backend_roles:
+          - "admin"
+        description: "Admin user — Mini-SOC"
+
+      kibanaserver:
+        hash: "{{ dashboard_hash.stdout_lines[-1] }}"
+        reserved: true
+        description: "Wazuh dashboard server user"
+  no_log: true
+  when: "'siem' in soc_profiles"
+
 - name: Démarrer la stack Mini-SOC ({{ profile_args }})
   ansible.builtin.command:
     cmd: "docker compose {{ profile_args }} up -d"

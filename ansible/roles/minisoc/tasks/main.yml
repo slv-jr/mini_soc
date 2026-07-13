@@ -60,7 +60,8 @@
     influx_password: "{{ _e.INFLUXDB_PASSWORD | default(lookup('password', '/dev/null length=24 chars=ascii_letters,digits'), true) }}"
     influx_token: "{{ _e.INFLUXDB_TOKEN | default(lookup('password', '/dev/null length=40 chars=ascii_letters,digits'), true) }}"
     grafana_password: "{{ _e.GRAFANA_PASSWORD | default(lookup('password', '/dev/null length=20 chars=ascii_letters,digits'), true) }}"
-    wazuh_api_password: "{{ _e.WAZUH_API_PASSWORD | default(lookup('password', '/dev/null length=20 chars=ascii_letters,digits') ~ 'A1', true) }}"
+    # L'API Wazuh exige majuscule + minuscule + chiffre + symbole (erreur 5007 sinon).
+    wazuh_api_password: "{{ _e.WAZUH_API_PASSWORD | default(lookup('password', '/dev/null length=20 chars=ascii_letters,digits') ~ 'aA1.', true) }}"
     indexer_password: "{{ _e.INDEXER_PASSWORD | default(lookup('password', '/dev/null length=20 chars=ascii_letters,digits') ~ 'A1', true) }}"
     dashboard_password: "{{ _e.DASHBOARD_PASSWORD | default(lookup('password', '/dev/null length=20 chars=ascii_letters,digits') ~ 'A1', true) }}"
     minisoc_api_token: "{{ _e.MINISOC_API_TOKEN | default(lookup('password', '/dev/null length=40 chars=ascii_letters,digits'), true) }}"

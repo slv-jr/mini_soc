@@ -153,6 +153,8 @@ services:
     networks: [soc-net]
 
   # ── SIEM : Wazuh indexer (OpenSearch) ───────────────────────────────────────
+  # Chemins de montage alignés sur le compose officiel wazuh-docker 4.14 :
+  # la config DOIT être sous /usr/share/wazuh-indexer/config/ pour être lue.
   wazuh.indexer:
     image: wazuh/wazuh-indexer:4.14.0
     container_name: minisoc-wazuh-indexer
@@ -169,9 +171,13 @@ services:
       - OPENSEARCH_JAVA_OPTS=${OPENSEARCH_JAVA_OPTS:--Xms1g -Xmx1g}
     volumes:
       - wazuh_indexer_data:/var/lib/wazuh-indexer
-      - ./wazuh/config/wazuh_indexer/wazuh.indexer.yml:/usr/share/wazuh-indexer/opensearch.yml:ro
-      - ./wazuh/config/wazuh_indexer/internal_users.yml:/usr/share/wazuh-indexer/opensearch-security/internal_users.yml:ro
-      - ./wazuh/config/certs:/usr/share/wazuh-indexer/certs:ro
+      - ./wazuh/config/wazuh_indexer/wazuh.indexer.yml:/usr/share/wazuh-indexer/config/opensearch.yml:ro
+      - ./wazuh/config/wazuh_indexer/internal_users.yml:/usr/share/wazuh-indexer/config/opensearch-security/internal_users.yml:ro
+      - ./wazuh/config/certs/root-ca.pem:/usr/share/wazuh-indexer/config/certs/root-ca.pem:ro
+      - ./wazuh/config/certs/wazuh.indexer.pem:/usr/share/wazuh-indexer/config/certs/wazuh.indexer.pem:ro
+      - ./wazuh/config/certs/wazuh.indexer-key.pem:/usr/share/wazuh-indexer/config/certs/wazuh.indexer.key:ro
+      - ./wazuh/config/certs/admin.pem:/usr/share/wazuh-indexer/config/certs/admin.pem:ro
+      - ./wazuh/config/certs/admin-key.pem:/usr/share/wazuh-indexer/config/certs/admin-key.pem:ro
     networks: [soc-net]
 
   # ── SIEM : Wazuh manager ────────────────────────────────────────────────────
@@ -194,16 +200,39 @@ services:
       - INDEXER_URL=https://wazuh.indexer:9200
       - INDEXER_USERNAME=${INDEXER_USERNAME:-admin}
       - INDEXER_PASSWORD=${INDEXER_PASSWORD:?indexer password requis}
+      - FILEBEAT_SSL_VERIFICATION_MODE=full
+      - SSL_CERTIFICATE_AUTHORITIES=/etc/ssl/root-ca.pem
+      - SSL_CERTIFICATE=/etc/ssl/filebeat.pem
+      - SSL_KEY=/etc/ssl/filebeat.key
       - API_USERNAME=${WAZUH_API_USERNAME:-wazuh-wui}
       - API_PASSWORD=${WAZUH_API_PASSWORD:?wazuh api password requis}
       # Transmis à l'intégration custom-minisoc pour authentifier le webhook.
       - MINISOC_API_TOKEN=${MINISOC_API_TOKEN:-}
     volumes:
-      - wazuh_manager_data:/var/ossec/data
-      - ./wazuh/config/wazuh_cluster/wazuh_manager.conf:/wazuh-config-mount/etc/ossec.conf
-      - ./wazuh/custom-rules/local_rules.xml:/var/ossec/etc/rules/local_rules.xml
+      # Volumes d'état officiels wazuh-docker : requis par le script d'init de
+      # l'image (0-wazuh-init) et rendent l'état persistant (client.keys des
+      # agents, certs authd...) même si le conteneur est recréé.
+      - wazuh_api_configuration:/var/ossec/api/configuration
+      - wazuh_etc:/var/ossec/etc
+      - wazuh_logs:/var/ossec/logs
+      - wazuh_queue:/var/ossec/queue
+      - wazuh_var_multigroups:/var/ossec/var/multigroups
+      - wazuh_integrations:/var/ossec/integrations
+      - wazuh_active_response:/var/ossec/active-response/bin
+      - wazuh_agentless:/var/ossec/agentless
+      - wazuh_wodles:/var/ossec/wodles
+      - filebeat_etc:/etc/filebeat
+      - filebeat_var:/var/lib/filebeat
+      # Certificats filebeat -> indexer (mêmes certs que le manager).
+      - ./wazuh/config/certs/root-ca.pem:/etc/ssl/root-ca.pem:ro
+      - ./wazuh/config/certs/wazuh.manager.pem:/etc/ssl/filebeat.pem:ro
+      - ./wazuh/config/certs/wazuh.manager-key.pem:/etc/ssl/filebeat.key:ro
+      # Notre configuration : appliquée par l'entrypoint via /wazuh-config-mount.
+      - ./wazuh/config/wazuh_cluster/wazuh_manager.conf:/wazuh-config-mount/etc/ossec.conf:ro
+      - ./wazuh/custom-rules/local_rules.xml:/wazuh-config-mount/etc/rules/local_rules.xml:ro
       - ./wazuh/active-response/block-ip.sh:/var/ossec/active-response/bin/block-ip.sh
       - ./wazuh/integrations/custom-minisoc.py:/var/ossec/integrations/custom-minisoc.py:ro
+      # Certs référencés par le bloc <indexer> de ossec.conf.
       - ./wazuh/config/certs:/etc/ssl/certs/wazuh:ro
       # Ingestion directe des alertes Suricata par Wazuh (localfile dans ossec.conf).
       - suricata_logs:/var/log/suricata:ro
@@ -270,7 +299,17 @@ volumes:
   suricata_logs:
   zeek_logs:
   wazuh_indexer_data:
-  wazuh_manager_data:
+  wazuh_api_configuration:
+  wazuh_etc:
+  wazuh_logs:
+  wazuh_queue:
+  wazuh_var_multigroups:
+  wazuh_integrations:
+  wazuh_active_response:
+  wazuh_agentless:
+  wazuh_wodles:
+  filebeat_etc:
+  filebeat_var:
   wazuh_dashboard_config:
 
 networks:
