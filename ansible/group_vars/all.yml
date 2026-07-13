@@ -22,8 +22,8 @@ soc_profiles:
   - siem
 
 # ── Réglage mémoire OpenSearch (indexer Wazuh) ──────────────────────────────
-# 1g par défaut ; passer à 512m sur une machine 4 Go.
-opensearch_heap: "1g"
+# 512m pour une machine 4 Go ; passer à 1g si >= 8 Go de RAM.
+opensearch_heap: "512m"
 
 # ── Threat intel ─────────────────────────────────────────────────────────────
 # Clé de licence MaxMind pour télécharger GeoLite2 (optionnel).
